@@ -12,22 +12,13 @@ fn remove_redundant_lines<'a>(lines: &'a Vec<&'a str>) -> Vec<&'a str> {
                 continue;
             }
 
-            if line.starts_with(".") {
+            if line.starts_with(".") || line.ends_with(":") {
                 if cur_block.len() != 0 {
                     line_blocks.push(vec![line]);
                 } else {
                     cur_block.push(line);
                 }
                 line_blocks.push(Vec::new());
-                continue;
-            }
-
-            if line.ends_with(":") {
-                if cur_block.len() != 0 {
-                    line_blocks.push(vec![line]);
-                } else {
-                    cur_block.push(line);
-                }
                 continue;
             }
 
@@ -41,10 +32,16 @@ fn remove_redundant_lines<'a>(lines: &'a Vec<&'a str>) -> Vec<&'a str> {
         if block.len() == 0 {
             continue;
         }
+
+        let is_function_name = block[0].ends_with(":");
+
         for line in block {
             output.push(line);
         }
-        output.push("");
+
+        if !is_function_name {
+            output.push("");
+        }
     }
 
     return output;
