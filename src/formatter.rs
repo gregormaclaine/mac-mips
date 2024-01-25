@@ -1,5 +1,13 @@
 use std::fmt::Error;
 
+fn split_line_from_comment(line: &str) -> (&str, &str) {
+    if let Some(comment_index) = line.find('#') {
+        return (&line[..comment_index], &line[(comment_index + 1)..]);
+    } else {
+        return (line, "");
+    }
+}
+
 pub fn format(contents: String) -> Result<String, Error> {
     let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
 
@@ -40,6 +48,9 @@ pub fn format(contents: String) -> Result<String, Error> {
     let mut lines: Vec<&str> = Vec::new();
 
     for block in line_blocks {
+        if block.len() == 0 {
+            continue;
+        }
         for line in block {
             lines.push(line);
         }
@@ -49,14 +60,21 @@ pub fn format(contents: String) -> Result<String, Error> {
     let mut formatted_lines: Vec<String> = lines
         .iter()
         .map(|line| {
-            let mut parts: Vec<String> = line.split_whitespace().map(|p| String::from(p)).collect();
+            let (code, comment) = split_line_from_comment(line);
+
+            let mut parts: Vec<String> = code.split_whitespace().map(|p| String::from(p)).collect();
             for i in (0..parts.len()).rev() {
                 if parts[i] == "," {
                     parts.remove(i);
                     parts[i - 1] += ",";
                 }
             }
-            return parts.join(" ");
+
+            if comment == "" {
+                return parts.join(" ");
+            } else {
+                return parts.join(" ") + "  # " + comment.trim();
+            }
         })
         .collect();
 
