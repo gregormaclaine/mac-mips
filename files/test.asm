@@ -1,6 +1,8 @@
 
-.data     
 
+
+
+.data     
 output:     .asciiz  "Hello World"
 
 .text
@@ -10,11 +12,11 @@ output:     .asciiz  "Hello World"
     main:
 
 li $v0, 4
-la $a0, output
+la $a0,   output
 syscall
-
-li $v0, 10
-syscall
+ end:  
+    li $v0   , 10
+    syscall
 
 
 

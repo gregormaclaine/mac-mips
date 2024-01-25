@@ -47,8 +47,6 @@ fn main() {
 
     if let Some(filename) = file {
         let path = Path::new(filename.as_str());
-
-        println!("{}", filename);
         let file = fs::read_to_string(path);
 
         if let Err(e) = file {
