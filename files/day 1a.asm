@@ -25,7 +25,12 @@ ble $t3, 9, main
 subi $t3, $t1, 48#Set first digit to number in t1 if not set
 j main
 
-end_line:       
+end_line:    
+
+
+
+
+
 add $t2, $t2, $t4      
 mul $t3,     $t3, 10
 add $t2, $t2, $t3

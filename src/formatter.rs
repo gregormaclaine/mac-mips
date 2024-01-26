@@ -6,14 +6,14 @@ fn remove_redundant_lines(lines: &Vec<&str>) -> Vec<String> {
     for line in lines {
         if let Some(cur_block) = line_blocks.last_mut() {
             if line.is_empty() {
-                if cur_block.len() != 0 && !(cur_block[0].ends_with(":") && cur_block.len() == 1) {
+                if !cur_block.is_empty() {
                     line_blocks.push(Vec::new());
                 }
                 continue;
             }
 
-            if line.starts_with(".") || line.ends_with(":") {
-                if cur_block.len() != 0 {
+            if line.starts_with('.') || line.ends_with(':') {
+                if !cur_block.is_empty() {
                     line_blocks.push(vec![line]);
                 } else {
                     cur_block.push(line);
@@ -29,11 +29,11 @@ fn remove_redundant_lines(lines: &Vec<&str>) -> Vec<String> {
     let mut output: Vec<String> = Vec::new();
 
     for block in line_blocks {
-        if block.len() == 0 {
+        if block.is_empty() {
             continue;
         }
 
-        if block[0].ends_with(":") {
+        if block[0].ends_with(':') {
             output.push(String::from(block[0]));
             continue;
         }
@@ -64,13 +64,10 @@ fn split_line_from_comment(line: &str) -> (&str, &str) {
     }
 }
 
-fn get_max_length(lines: &Vec<String>) -> u32 {
+fn get_max_length(lines: &[String]) -> u32 {
     return lines
         .iter()
-        .map(|l| {
-            let (code, _) = split_line_from_comment(l);
-            return code.len();
-        })
+        .map(|l| split_line_from_comment(l).0.len())
         .max()
         .unwrap() as u32;
 }
@@ -78,7 +75,7 @@ fn get_max_length(lines: &Vec<String>) -> u32 {
 fn format_line(line: &str, comment_indent: u32) -> String {
     let (code, comment) = split_line_from_comment(line);
 
-    let mut parts: Vec<String> = code.split_whitespace().map(|p| String::from(p)).collect();
+    let mut parts: Vec<String> = code.split_whitespace().map(String::from).collect();
     for i in (0..parts.len()).rev() {
         if parts[i] == "," {
             parts.remove(i);
@@ -86,12 +83,12 @@ fn format_line(line: &str, comment_indent: u32) -> String {
         }
     }
 
-    if comment == "" {
+    if comment.is_empty() {
         return parts.join(" ");
-    } else {
-        let comment_gap = (0..comment_indent).map(|_| " ").collect::<String>();
-        return parts.join(" ") + comment_gap.as_str() + "# " + comment.trim();
     }
+
+    let comment_gap = (0..comment_indent).map(|_| " ").collect::<String>();
+    return parts.join(" ") + comment_gap.as_str() + "# " + comment.trim();
 }
 
 pub fn format(contents: String) -> Result<String, Error> {
@@ -102,16 +99,16 @@ pub fn format(contents: String) -> Result<String, Error> {
     let mut after_bookmarks = false;
     for line in lines.iter_mut() {
         if !after_bookmarks {
-            if line.ends_with(":") {
+            if line.ends_with(':') {
                 after_bookmarks = true;
             }
             continue;
         }
 
-        if !line.is_empty() && !line.ends_with(":") {
+        if !line.is_empty() && !line.ends_with(':') {
             *line = String::from("\t") + line;
         }
     }
 
-    return Ok(lines.join("\n"));
+    Ok(lines.join("\n"))
 }
