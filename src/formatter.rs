@@ -167,6 +167,10 @@ fn format_line(line: &str, comment_indent: u32) -> String {
         return formatted_code;
     }
 
+    if code.is_empty() {
+        return String::from("# ") + comment.trim();
+    }
+
     let comment_gap = (0..comment_indent).map(|_| " ").collect::<String>();
     return formatted_code + comment_gap.as_str() + "# " + comment.trim();
 }
