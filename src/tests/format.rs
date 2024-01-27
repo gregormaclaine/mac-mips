@@ -17,9 +17,40 @@ fn simple_file() {
 
 #[test]
 fn preserve_strings() {
+    let should_preserve = "\"   I, am a  string\"\n";
+    assert_eq!(
+        formatter::format(String::from(should_preserve)),
+        Ok(String::from(should_preserve))
+    );
+
     let input = ".data\no: .asciiz \"Hello      World   ,  \"\n.text\nli $v0, 10\nsyscall";
     let expected =
         ".data\n\no: .asciiz \"Hello      World   ,  \"\n\n.text\n\nli $v0, 10\nsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn preserve_comments() {
+    let input1 = "# I am a comment\n";
+    assert_eq!(
+        formatter::format(String::from(input1)),
+        Ok(String::from(input1))
+    );
+
+    let whitespace_around_input1 = "  #   I am a comment  ";
+    assert_eq!(
+        formatter::format(String::from(whitespace_around_input1)),
+        Ok(String::from(input1))
+    );
+}
+
+#[test]
+fn collapse_comments() {
+    let input = "li $v0 ,1\n";
+    let expected = "li $v0, 1\n";
     assert_eq!(
         formatter::format(String::from(input)),
         Ok(String::from(expected))
