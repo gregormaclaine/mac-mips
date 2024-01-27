@@ -1,6 +1,6 @@
 use std::fmt::Error;
 
-fn remove_redundant_lines(lines: &Vec<&str>) -> Vec<String> {
+fn split_into_line_blocks<'a>(lines: &Vec<&'a str>) -> Vec<Vec<&'a str>> {
     let mut line_blocks: Vec<Vec<&str>> = vec![Vec::new()];
 
     for line in lines {
@@ -26,6 +26,10 @@ fn remove_redundant_lines(lines: &Vec<&str>) -> Vec<String> {
         }
     }
 
+    return line_blocks;
+}
+
+fn collapse_line_blocks(line_blocks: &Vec<Vec<&str>>) -> Vec<String> {
     let mut output: Vec<String> = Vec::new();
 
     for block in line_blocks {
@@ -152,11 +156,7 @@ fn format_line_of_code(code: &str) -> String {
         }
     }
 
-    if formatted_code.starts_with(" ") {
-        formatted_code = formatted_code.trim_start().to_string();
-    }
-
-    return formatted_code;
+    return formatted_code.trim_start().to_string();
 }
 
 fn format_line(line: &str, comment_indent: u32) -> String {
@@ -175,24 +175,26 @@ fn format_line(line: &str, comment_indent: u32) -> String {
     return formatted_code + comment_gap.as_str() + "# " + comment.trim();
 }
 
-pub fn format(contents: String) -> Result<String, Error> {
-    let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
-
-    let mut lines = remove_redundant_lines(&raw_lines);
-
-    let mut after_bookmarks = false;
-    for line in lines.iter_mut() {
-        if !after_bookmarks {
-            if line.ends_with(':') {
-                after_bookmarks = true;
-            }
-            continue;
+fn indent_lines_after_procedures(lines: &mut Vec<String>) {
+    for line in lines
+        .iter_mut()
+        .skip_while(|l| !l.starts_with(".text"))
+        .skip_while(|l| !l.ends_with(':'))
+    {
+        if line.starts_with('.') {
+            break;
         }
 
         if !line.is_empty() && !line.ends_with(':') {
             *line = String::from("\t") + line;
         }
     }
+}
 
+pub fn format(contents: String) -> Result<String, Error> {
+    let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
+    let line_blocks = split_into_line_blocks(&raw_lines);
+    let mut lines = collapse_line_blocks(&line_blocks);
+    indent_lines_after_procedures(&mut lines);
     Ok(lines.join("\n"))
 }

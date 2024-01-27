@@ -56,3 +56,13 @@ fn collapse_comments() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn data_after_text_section() {
+    let input = ".text\nmain:\nli $v0, 10\nsyscall\n.data\nZ: .word 0";
+    let expected = ".text\n\nmain:\n\tli $v0, 10\n\tsyscall\n\n.data\n\nZ: .word 0\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
