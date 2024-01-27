@@ -14,3 +14,14 @@ fn simple_file() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn preserve_strings() {
+    let input = ".data\no: .asciiz \"Hello      World   ,  \"\n.text\nli $v0, 10\nsyscall";
+    let expected =
+        ".data\n\no: .asciiz \"Hello      World   ,  \"\n\n.text\n\nli $v0, 10\nsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
