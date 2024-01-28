@@ -1,6 +1,6 @@
 # `mac-mips`: A file formatter for MIPS source files
 
-A simple CLT that formats a source file of MIPS assembly code.
+A simple CLT that formats source files of MIPS assembly code.
 
 ## Example
 
