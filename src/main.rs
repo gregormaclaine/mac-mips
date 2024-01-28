@@ -9,11 +9,12 @@ use std::io::prelude::*;
 use std::path::Path;
 
 fn help() {
-    println!("mac-mips v0.1.0\n\nUsage:");
-    println!("\tmacmips [filename] [args]\n");
-    println!("Arguments:");
+    println!("mac-mips v0.1.0\n");
+    println!("Usage: mac-mips [filename] [OPTIONS]\n");
+    println!("Options:");
     println!("\t-h\t        See docs about tool");
     println!("\t-o <OUT DIR>\tOutput directory");
+    println!("");
     std::process::exit(0);
 }
 
@@ -40,7 +41,7 @@ fn main() {
                     eprintln!("Error: Invalid args, {}", unknown);
                     std::process::exit(1);
                 }
-            };
+            }
         } else {
             file = Some(arg.to_owned());
         }
@@ -89,7 +90,7 @@ fn main() {
         }
     } else {
         eprintln!("Error: Expected file as cmd line arg");
-        eprintln!("       To see how to use this tool, use 'macmips -h'");
+        eprintln!("       To see how to use this tool, use 'mac-mips -h'");
         std::process::exit(1);
     }
 }
