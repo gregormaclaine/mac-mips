@@ -1,5 +1,13 @@
-.data
-o: .asciiz "Hello      World   ,  "
+# Solo Comment
+
 .text
-li $v0, 10
+
+# Comment about function
+main:
+li $v0, 1
+li $a0, 69
 syscall
+
+.data
+
+o: .space 10

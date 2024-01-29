@@ -66,3 +66,13 @@ fn data_after_text_section() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn solo_comment_blocks() {
+    let input = "# Solo Comment\n\n.text\n\n# Comment about function\nmain:\nli $v0, 1\nli $a0, 69\nsyscall";
+    let expected = "# Solo Comment\n\n.text\n\n# Comment about function\nmain:\n\tli $v0, 1\n\tli $a0, 69\n\tsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
