@@ -249,19 +249,31 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
     return out_lines;
 }
 
-fn indent_lines_after_procedures(lines: &mut Vec<String>) {
-    for line in lines
-        .iter_mut()
-        .skip_while(|l| !l.starts_with(".text"))
-        .skip_while(|l| !l.ends_with(':'))
-    {
-        if line.starts_with('.') {
-            break;
-        }
+#[derive(Debug)]
+enum Directive {
+    Data,
+    Text,
+    TextAndIndent,
+}
 
-        if !line.is_empty() && !line.ends_with(':') {
-            *line = String::from("\t") + line;
-        }
+fn indent_lines_after_procedures(lines: &mut Vec<String>) {
+    let mut cur_dir = Directive::Text;
+
+    for line in lines {
+        cur_dir = match (cur_dir, line) {
+            (dir, line) if line.is_empty() => dir,
+            (_, line) if line.starts_with(".text") => Directive::Text,
+            (_, line) if line.starts_with(".data") => Directive::Data,
+
+            (Directive::Text, line) if line.ends_with(':') => Directive::TextAndIndent,
+            (Directive::TextAndIndent, line) if line.ends_with(':') => Directive::TextAndIndent,
+
+            (Directive::TextAndIndent, line) => {
+                *line = String::from("\t") + line;
+                Directive::TextAndIndent
+            }
+            (dir, _) => dir,
+        };
     }
 }
 

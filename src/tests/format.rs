@@ -48,7 +48,7 @@ fn preserve_comments() {
 }
 
 #[test]
-fn collapse_comments() {
+fn mislaid_commas() {
     let input = "li $v0 ,1\n";
     let expected = "li $v0, 1\n";
     assert_eq!(
@@ -71,6 +71,36 @@ fn data_after_text_section() {
 fn solo_comment_blocks() {
     let input = "# Solo Comment\n\n.text\n\n# Comment about function\nmain:\nli $v0, 1\nli $a0, 69\nsyscall";
     let expected = "# Solo Comment\n\n.text\n\n# Comment about function\nmain:\n\tli $v0, 1\n\tli $a0, 69\n\tsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn no_text_directive() {
+    let input = "main:\nli $a0 , 1";
+    let expected = "main:\n\tli $a0, 1\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn multiple_text_directives() {
+    let input = ".text\nm:\nli $v0, 1\nli $a0, 69\n.data \n.text\nn:\nsyscall";
+    let expected = ".text\n\nm:\n\tli $v0, 1\n\tli $a0, 69\n\n.data\n\n.text\n\nn:\n\tsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn linked_comment_blocks() {
+    let input = "# Comment about function\nmain:\n# Middle comment\nli $v0, 1\nli $a0, 69\n\n# Linked comment\nsyscall\n";
+    let expected = "# Comment about function\nmain:\n\t# Middle comment\n\tli $v0, 1\n\tli $a0, 69\n\n\t# Linked comment\n\tsyscall\n";
     assert_eq!(
         formatter::format(String::from(input)),
         Ok(String::from(expected))
