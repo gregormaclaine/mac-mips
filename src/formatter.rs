@@ -12,7 +12,18 @@ mod line {
     enum CodeToken {
         Item(String),
         Comma,
+        ParenOpen,
+        ParenClose,
         Literal(String),
+    }
+
+    fn code_token_from_char(c: char) -> CodeToken {
+        match c {
+            ',' => CodeToken::Comma,
+            '(' => CodeToken::ParenOpen,
+            ')' => CodeToken::ParenClose,
+            _ => panic!(),
+        }
     }
 
     fn tokenise_line(code: &str) -> Vec<CodeToken> {
@@ -38,8 +49,8 @@ mod line {
         tokens: &mut Vec<CodeToken>,
     ) -> TokenisationState {
         match (state, c) {
-            (TokenisationState::Waiting, ',') => {
-                tokens.push(CodeToken::Comma);
+            (TokenisationState::Waiting, ',' | '(' | ')') => {
+                tokens.push(code_token_from_char(c));
                 return TokenisationState::Waiting;
             }
             (TokenisationState::Waiting, c) if c.is_whitespace() => TokenisationState::Waiting,
@@ -58,9 +69,9 @@ mod line {
                 tokens.push(CodeToken::Item(cur));
                 return TokenisationState::Waiting;
             }
-            (TokenisationState::Token(cur), ',') => {
+            (TokenisationState::Token(cur), ',' | '(' | ')') => {
                 tokens.push(CodeToken::Item(cur));
-                tokens.push(CodeToken::Comma);
+                tokens.push(code_token_from_char(c));
                 return TokenisationState::Waiting;
             }
             (TokenisationState::Token(cur), c) => TokenisationState::Token(cur + &c.to_string()),
@@ -83,17 +94,50 @@ mod line {
 
         let mut formatted_code = String::new();
 
-        for t in tokens {
-            match t {
-                CodeToken::Comma => formatted_code += ",",
-                CodeToken::Item(item) => formatted_code += &(" ".to_owned() + &item),
-                CodeToken::Literal(string) => {
-                    formatted_code += &format!("{}{}{}", " \"", string, '"')
+        for pair in tokens.windows(2) {
+            let next: String = match (&pair[0], &pair[1]) {
+                (
+                    CodeToken::Item(item),
+                    CodeToken::Comma | CodeToken::ParenOpen | CodeToken::ParenClose,
+                ) => String::from(item),
+                (CodeToken::Item(item), CodeToken::Item(_) | CodeToken::Literal(_)) => {
+                    format!("{} ", item)
                 }
-            }
+                (
+                    CodeToken::Comma,
+                    CodeToken::ParenOpen | CodeToken::Item(_) | CodeToken::Literal(_),
+                ) => String::from(", "),
+                (CodeToken::ParenOpen, _) => String::from("("),
+                (CodeToken::ParenClose, CodeToken::Item(_) | CodeToken::Literal(_)) => {
+                    String::from(") ")
+                }
+                (
+                    CodeToken::ParenClose,
+                    CodeToken::Comma | CodeToken::ParenClose | CodeToken::ParenOpen,
+                ) => String::from(")"),
+                (
+                    CodeToken::Literal(string),
+                    CodeToken::Comma | CodeToken::ParenOpen | CodeToken::ParenClose,
+                ) => format!("\"{}\"", string),
+                (CodeToken::Literal(string), CodeToken::Item(_) | CodeToken::Literal(_)) => {
+                    format!("\"{}\" ", string)
+                }
+                (CodeToken::Comma, CodeToken::ParenClose | CodeToken::Comma) => String::from(","),
+            };
+
+            formatted_code += &next;
         }
 
-        return formatted_code.trim_start().to_string();
+        let last_piece = match tokens.last() {
+            Some(CodeToken::Comma) => String::from(","),
+            Some(CodeToken::ParenOpen) => String::from("("),
+            Some(CodeToken::ParenClose) => String::from(")"),
+            Some(CodeToken::Item(item)) => String::from(item),
+            Some(CodeToken::Literal(string)) => format!("\"{}\"", string),
+            None => String::new(),
+        };
+
+        return formatted_code + &last_piece;
     }
 
     pub fn format_comment(line: &str) -> String {

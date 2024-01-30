@@ -136,3 +136,13 @@ fn files_with_globl() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn array_indexing() {
+    let input = "lb $a0, 0 ( $sp )";
+    let expected = "lb $a0, 0($sp)\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
