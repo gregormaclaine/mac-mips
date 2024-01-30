@@ -106,3 +106,23 @@ fn linked_comment_blocks() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn comments_over_functions() {
+    let input = "main:\nli $v0, 1\n# Comment 2\nother:\nli $v0, 1";
+    let expected = "main:\n\tli $v0, 1\n\n# Comment 2\nother:\n\tli $v0, 1\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn comment_blocks_after_functions() {
+    let input = "main:\nli $v0, 1\n\n# 1\n\nli $v0, 10\nsyscall\n\n# 2";
+    let expected = "main:\n\tli $v0, 1\n\n\t# 1\n\n\tli $v0, 10\n\tsyscall\n\n# 2\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}

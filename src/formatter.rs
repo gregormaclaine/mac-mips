@@ -249,42 +249,74 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
     return out_lines;
 }
 
-#[derive(Debug)]
-enum Directive {
-    Data,
-    Text,
-    TextAndIndent,
+fn indent_block(block: &mut LineBlock<String>) {
+    match block {
+        LineBlock::Code(lines) | LineBlock::Comment(lines) => {
+            for line in lines {
+                *line = String::from("\t") + line;
+            }
+        }
+
+        // Directives & Procedures should never be indented
+        _ => {}
+    }
 }
 
-fn indent_lines_after_procedures(lines: &mut Vec<String>) {
-    let mut cur_dir = Directive::Text;
+fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
+    let mut text_chunks: Vec<Vec<&mut LineBlock<String>>> = vec![Vec::new()];
+    let mut in_data_chunk = false;
 
-    for line in lines {
-        cur_dir = match (cur_dir, line) {
-            (dir, line) if line.is_empty() => dir,
-            (_, line) if line.starts_with(".text") => Directive::Text,
-            (_, line) if line.starts_with(".data") => Directive::Data,
-
-            (Directive::Text, line) if line.ends_with(':') => Directive::TextAndIndent,
-            (Directive::TextAndIndent, line) if line.ends_with(':') => Directive::TextAndIndent,
-
-            (Directive::TextAndIndent, line) => {
-                *line = String::from("\t") + line;
-                Directive::TextAndIndent
+    for block in blocks {
+        match (in_data_chunk, block) {
+            (_, LineBlock::SectionDenoter(line)) if line.starts_with(".data") => {
+                in_data_chunk = true;
             }
-            (dir, _) => dir,
-        };
+            (_, LineBlock::SectionDenoter(line)) if line.starts_with(".text") => {
+                in_data_chunk = false;
+                text_chunks.push(Vec::new());
+            }
+            (false, block) => text_chunks.last_mut().unwrap().push(block),
+            (_, _) => {}
+        }
+    }
+
+    for chunk in text_chunks {
+        let first_proc_index = chunk.iter().enumerate().find_map(|(i, b)| match b {
+            LineBlock::ProcedureDenoter(_) => Some(i),
+            _ => None,
+        });
+
+        if let Some(index) = first_proc_index {
+            let mut should_indent = false;
+
+            for block in chunk.into_iter().skip(index + 1).rev() {
+                match (should_indent, &block) {
+                    (_, LineBlock::ProcedureDenoter(_)) => should_indent = false,
+                    (_, LineBlock::Code(_)) => {
+                        should_indent = true;
+                        indent_block(block);
+                    }
+
+                    (true, LineBlock::Comment(_)) => indent_block(block),
+                    (false, LineBlock::Comment(_)) => {}
+
+                    (_, LineBlock::SectionDenoter(_)) => panic!(),
+                    (_, LineBlock::Space) => {}
+                }
+            }
+        }
     }
 }
 
 pub fn format(contents: String) -> Result<String, Error> {
     let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
     let blocks: Vec<LineBlock<&str>> = split_into_line_blocks(&raw_lines);
-    let formatted_blocks: Vec<LineBlock<String>> =
+    let mut formatted_blocks: Vec<LineBlock<String>> =
         blocks.into_iter().map(format_line_block).collect();
 
-    let mut lines: Vec<String> = consume_line_blocks(formatted_blocks);
+    indent_blocks(&mut formatted_blocks);
 
-    indent_lines_after_procedures(&mut lines);
+    let lines: Vec<String> = consume_line_blocks(formatted_blocks);
+
     Ok(lines.join("\n"))
 }
