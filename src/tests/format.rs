@@ -126,3 +126,13 @@ fn comment_blocks_after_functions() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn files_with_globl() {
+    let input = ".text\n.globl main\nmain:\nli $t2, 25";
+    let expected = ".text\n\n.globl main\n\nmain:\n\tli $t2, 25\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
