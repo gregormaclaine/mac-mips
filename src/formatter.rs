@@ -300,8 +300,7 @@ fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
                     (true, LineBlock::Comment(_)) => indent_block(block),
                     (false, LineBlock::Comment(_)) => {}
 
-                    (_, LineBlock::SectionDenoter(_)) => panic!(),
-                    (_, LineBlock::Space) => {}
+                    (_, LineBlock::Space | LineBlock::SectionDenoter(_)) => {}
                 }
             }
         }
