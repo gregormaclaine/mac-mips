@@ -17,6 +17,18 @@ mod line {
         Literal(String),
     }
 
+    impl CodeToken {
+        fn to_string(&self) -> String {
+            return match self {
+                CodeToken::Comma => String::from(","),
+                CodeToken::ParenOpen => String::from("("),
+                CodeToken::ParenClose => String::from(")"),
+                CodeToken::Item(item) => String::from(item),
+                CodeToken::Literal(string) => format!("\"{}\"", string),
+            };
+        }
+    }
+
     fn code_token_from_char(c: char) -> CodeToken {
         match c {
             ',' => CodeToken::Comma,
@@ -89,55 +101,34 @@ mod line {
         }
     }
 
+    fn should_be_spaced(left: &CodeToken, right: &CodeToken) -> bool {
+        match (left, right) {
+            (
+                CodeToken::Item(_) | CodeToken::Literal(_) | CodeToken::Comma,
+                CodeToken::Item(_) | CodeToken::Literal(_),
+            ) => true,
+            (CodeToken::Comma, CodeToken::ParenOpen) => true,
+            (_, _) => false,
+        }
+    }
+
     pub fn format_code(code: &str) -> String {
         let tokens = tokenise_line(code);
 
-        let mut formatted_code = String::new();
-
-        for pair in tokens.windows(2) {
-            let next: String = match (&pair[0], &pair[1]) {
-                (
-                    CodeToken::Item(item),
-                    CodeToken::Comma | CodeToken::ParenOpen | CodeToken::ParenClose,
-                ) => String::from(item),
-                (CodeToken::Item(item), CodeToken::Item(_) | CodeToken::Literal(_)) => {
-                    format!("{} ", item)
-                }
-                (
-                    CodeToken::Comma,
-                    CodeToken::ParenOpen | CodeToken::Item(_) | CodeToken::Literal(_),
-                ) => String::from(", "),
-                (CodeToken::ParenOpen, _) => String::from("("),
-                (CodeToken::ParenClose, CodeToken::Item(_) | CodeToken::Literal(_)) => {
-                    String::from(") ")
-                }
-                (
-                    CodeToken::ParenClose,
-                    CodeToken::Comma | CodeToken::ParenClose | CodeToken::ParenOpen,
-                ) => String::from(")"),
-                (
-                    CodeToken::Literal(string),
-                    CodeToken::Comma | CodeToken::ParenOpen | CodeToken::ParenClose,
-                ) => format!("\"{}\"", string),
-                (CodeToken::Literal(string), CodeToken::Item(_) | CodeToken::Literal(_)) => {
-                    format!("\"{}\" ", string)
-                }
-                (CodeToken::Comma, CodeToken::ParenClose | CodeToken::Comma) => String::from(","),
-            };
-
-            formatted_code += &next;
+        if tokens.is_empty() {
+            return String::new();
         }
 
-        let last_piece = match tokens.last() {
-            Some(CodeToken::Comma) => String::from(","),
-            Some(CodeToken::ParenOpen) => String::from("("),
-            Some(CodeToken::ParenClose) => String::from(")"),
-            Some(CodeToken::Item(item)) => String::from(item),
-            Some(CodeToken::Literal(string)) => format!("\"{}\"", string),
-            None => String::new(),
-        };
+        let mut formatted_code = tokens[0].to_string();
 
-        return formatted_code + &last_piece;
+        for pair in tokens.windows(2) {
+            if should_be_spaced(&pair[0], &pair[1]) {
+                formatted_code += " ";
+            }
+            formatted_code += &pair[1].to_string();
+        }
+
+        return formatted_code;
     }
 
     pub fn format_comment(line: &str) -> String {
