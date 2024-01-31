@@ -12,6 +12,7 @@ mod line {
     enum CodeToken {
         Item(String),
         Comma,
+        Colon,
         ParenOpen,
         ParenClose,
         Literal(String),
@@ -21,6 +22,7 @@ mod line {
         fn to_string(&self) -> String {
             return match self {
                 CodeToken::Comma => String::from(","),
+                CodeToken::Colon => String::from(":"),
                 CodeToken::ParenOpen => String::from("("),
                 CodeToken::ParenClose => String::from(")"),
                 CodeToken::Item(item) => String::from(item),
@@ -32,6 +34,7 @@ mod line {
     fn code_token_from_char(c: char) -> CodeToken {
         match c {
             ',' => CodeToken::Comma,
+            ':' => CodeToken::Colon,
             '(' => CodeToken::ParenOpen,
             ')' => CodeToken::ParenClose,
             _ => panic!(),
@@ -61,7 +64,7 @@ mod line {
         tokens: &mut Vec<CodeToken>,
     ) -> TokenisationState {
         match (state, c) {
-            (TokenisationState::Waiting, ',' | '(' | ')') => {
+            (TokenisationState::Waiting, ',' | ':' | '(' | ')') => {
                 tokens.push(code_token_from_char(c));
                 return TokenisationState::Waiting;
             }
@@ -81,10 +84,14 @@ mod line {
                 tokens.push(CodeToken::Item(cur));
                 return TokenisationState::Waiting;
             }
-            (TokenisationState::Token(cur), ',' | '(' | ')') => {
+            (TokenisationState::Token(cur), ',' | ':' | '(' | ')') => {
                 tokens.push(CodeToken::Item(cur));
                 tokens.push(code_token_from_char(c));
                 return TokenisationState::Waiting;
+            }
+            (TokenisationState::Token(cur), '"') => {
+                tokens.push(CodeToken::Item(cur));
+                return TokenisationState::StringLiteral(String::new());
             }
             (TokenisationState::Token(cur), c) => TokenisationState::Token(cur + &c.to_string()),
         }
@@ -104,7 +111,7 @@ mod line {
     fn should_be_spaced(left: &CodeToken, right: &CodeToken) -> bool {
         match (left, right) {
             (
-                CodeToken::Item(_) | CodeToken::Literal(_) | CodeToken::Comma,
+                CodeToken::Item(_) | CodeToken::Literal(_) | CodeToken::Comma | CodeToken::Colon,
                 CodeToken::Item(_) | CodeToken::Literal(_),
             ) => true,
             (CodeToken::Comma, CodeToken::ParenOpen) => true,

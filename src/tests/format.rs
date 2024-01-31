@@ -146,3 +146,18 @@ fn array_indexing() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn misspaced_data() {
+    let input1 = ".data\ntxt:.asciiz\"hello\"";
+    let input2 = ".data\ntxt   :   .asciiz   \"hello\"";
+    let expected = ".data\n\ntxt: .asciiz \"hello\"\n";
+    assert_eq!(
+        formatter::format(String::from(input1)),
+        Ok(String::from(expected))
+    );
+    assert_eq!(
+        formatter::format(String::from(input2)),
+        Ok(String::from(expected))
+    );
+}
