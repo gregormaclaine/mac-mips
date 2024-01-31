@@ -1,5 +1,7 @@
 use std::fmt::Error;
 
+static MAX_COMMENT_DISPARITY: usize = 10;
+
 mod line {
     #[derive(Debug)]
     enum TokenisationState {
@@ -150,7 +152,7 @@ mod line {
             return formatted_code;
         }
 
-        return formatted_code + " # " + comment.trim();
+        return formatted_code + " # " + comment;
     }
 }
 
@@ -198,16 +200,37 @@ fn split_into_line_blocks<'a>(lines: &Vec<&'a str>) -> Vec<LineBlock<&'a str>> {
     return line_blocks;
 }
 
+fn comment_start_index(line_pairs: &Vec<(String, String)>) -> usize {
+    let max_length_all = line_pairs.iter().map(|l| l.0.len()).max().unwrap_or(0);
+    let max_length_comments = line_pairs
+        .iter()
+        .filter_map(|l| {
+            if l.1.is_empty() {
+                None
+            } else {
+                Some(l.0.len())
+            }
+        })
+        .max()
+        .unwrap_or(0);
+
+    if max_length_all - max_length_comments >= MAX_COMMENT_DISPARITY {
+        max_length_comments + 2
+    } else {
+        max_length_all + 2
+    }
+}
+
 fn format_code_block(lines: &Vec<&str>) -> Vec<String> {
-    let block: Vec<(String, &str)> = lines
+    let block: Vec<(String, String)> = lines
         .iter()
         .map(|l| {
             let (code, comment) = line::split_code_from_comment(l);
-            (line::format_code(code), comment.trim())
+            (line::format_code(code), String::from(comment))
         })
         .collect();
 
-    let max_length = block.iter().map(|l| l.0.len()).max().unwrap_or(0);
+    let comment_index = comment_start_index(&block);
 
     return block
         .iter()
@@ -216,7 +239,7 @@ fn format_code_block(lines: &Vec<&str>) -> Vec<String> {
                 return code.clone();
             }
 
-            let comment_indent = max_length - code.len() + 2;
+            let comment_indent = comment_index - code.len();
             let comment_gap = (0..comment_indent).map(|_| " ").collect::<String>();
             return format!("{}{}# {}", code, comment_gap, comment);
         })
@@ -300,7 +323,7 @@ fn indent_block(block: &mut LineBlock<String>) {
         }
 
         // Directives & Procedures should never be indented
-        _ => {}
+        LineBlock::Space | LineBlock::ProcedureDenoter(_) | LineBlock::SectionDenoter(_) => {}
     }
 }
 

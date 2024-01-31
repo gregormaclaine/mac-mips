@@ -161,3 +161,15 @@ fn misspaced_data() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn long_lines_next_to_commented_lines() {
+    let input =
+        "long_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
+    let expected =
+        "long_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
