@@ -1,3 +1,3 @@
-li $v0, 1
-lb $a0, 10 ( $sp )
+main: li $v0, 1
+other: li $a0, 69
 syscall

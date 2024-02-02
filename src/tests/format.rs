@@ -45,6 +45,13 @@ fn preserve_comments() {
         formatter::format(String::from(whitespace_around_input1)),
         Ok(String::from(input1))
     );
+
+    let input2 = "# -:1234567#890&...data###";
+    let expected2 = "# -:1234567#890&...data###\n";
+    assert_eq!(
+        formatter::format(String::from(input2)),
+        Ok(String::from(expected2))
+    );
 }
 
 #[test]
@@ -165,11 +172,26 @@ fn misspaced_data() {
 #[test]
 fn long_lines_next_to_commented_lines() {
     let input =
-        "long_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
+        ".data\nlong_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
     let expected =
-        "long_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
+        ".data\n\nlong_line: .asciiz \"A very super long string that takes up a lot of horizontal space\"\nshort_line: .space 22000  # 22KB\n";
     assert_eq!(
         formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
+fn procedures_on_same_line_as_instruction() {
+    let input1 = "main:    li $v0, 1\nother:   li $a0, 69\nsyscall";
+    let input2 = "main:li $v0, 1\nother:li $a0, 69\nsyscall";
+    let expected = "main:\n\tli $v0, 1\n\nother:\n\tli $a0, 69\n\tsyscall\n";
+    assert_eq!(
+        formatter::format(String::from(input1)),
+        Ok(String::from(expected))
+    );
+    assert_eq!(
+        formatter::format(String::from(input2)),
         Ok(String::from(expected))
     );
 }

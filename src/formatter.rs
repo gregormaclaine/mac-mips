@@ -157,9 +157,35 @@ mod line {
 }
 
 #[derive(Debug)]
+enum SplitLine<'a> {
+    One(&'a str),
+    Two((&'a str, &'a str)),
+}
+
+fn possibly_split_line<'a>(line: &'a str) -> SplitLine<'a> {
+    if let Some(colon_i) = line.find(':') {
+        if let Some(comment_i) = line.find('#') {
+            if colon_i < comment_i {
+                return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+            }
+        } else {
+            return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+        }
+    }
+    return SplitLine::One(line);
+}
+
+#[derive(Debug)]
+enum Directive {
+    Text,
+    Data,
+}
+
+#[derive(Debug)]
 enum LineBlock<T> {
     Space,
     Code(Vec<T>),
+    Data(Vec<T>),
     Comment(Vec<T>),
     SectionDenoter(T),
     ProcedureDenoter(T),
@@ -167,37 +193,58 @@ enum LineBlock<T> {
 
 fn split_into_line_blocks<'a>(lines: &Vec<&'a str>) -> Vec<LineBlock<&'a str>> {
     let mut line_blocks: Vec<LineBlock<&str>> = vec![LineBlock::Space];
+    let mut current_dir = Directive::Text;
 
     for line in lines {
-        if let Some(cur_block) = line_blocks.last_mut() {
-            match (cur_block, line) {
-                (LineBlock::Space, line) if line.is_empty() => {}
-                (_, line) if line.is_empty() => line_blocks.push(LineBlock::Space),
-
-                (_, line) if line.starts_with('.') => {
-                    line_blocks.push(LineBlock::SectionDenoter(line))
+        match current_dir {
+            Directive::Data => consume_line(&mut line_blocks, &mut current_dir, line),
+            Directive::Text => match possibly_split_line(line) {
+                SplitLine::One(line) => consume_line(&mut line_blocks, &mut current_dir, line),
+                SplitLine::Two((part1, part2)) => {
+                    consume_line(&mut line_blocks, &mut current_dir, part1);
+                    consume_line(&mut line_blocks, &mut current_dir, part2);
                 }
-
-                (_, line) if line.ends_with(':') => {
-                    line_blocks.push(LineBlock::ProcedureDenoter(line))
-                }
-
-                (LineBlock::Comment(cur), line) if line.starts_with('#') => {
-                    cur.push(line);
-                }
-                (_, line) if line.starts_with('#') => {
-                    line_blocks.push(LineBlock::Comment(vec![line]))
-                }
-
-                (LineBlock::Code(cur), line) => {
-                    cur.push(line);
-                }
-                (_, line) => line_blocks.push(LineBlock::Code(vec![line])),
-            }
+            },
         }
     }
 
     return line_blocks;
+}
+
+fn consume_line<'a>(
+    line_blocks: &mut Vec<LineBlock<&'a str>>,
+    current_dir: &mut Directive,
+    line: &'a str,
+) {
+    let cur_block = line_blocks.last_mut().unwrap();
+    match (cur_block, &current_dir, line) {
+        (LineBlock::Space, _, line) if line.is_empty() => {}
+        (_, _, line) if line.is_empty() => line_blocks.push(LineBlock::Space),
+
+        (_, _, line) if line.starts_with('.') => {
+            if line.starts_with(".text") {
+                *current_dir = Directive::Text;
+            } else if line.starts_with(".data") {
+                *current_dir = Directive::Data;
+            }
+            line_blocks.push(LineBlock::SectionDenoter(line))
+        }
+
+        (_, Directive::Text, line) if line.ends_with(':') => {
+            line_blocks.push(LineBlock::ProcedureDenoter(line))
+        }
+
+        (LineBlock::Comment(cur), _, line) if line.starts_with('#') => {
+            cur.push(line);
+        }
+        (_, _, line) if line.starts_with('#') => line_blocks.push(LineBlock::Comment(vec![line])),
+
+        (LineBlock::Code(cur) | LineBlock::Data(cur), _, line) => {
+            cur.push(line);
+        }
+        (_, Directive::Text, line) => line_blocks.push(LineBlock::Code(vec![line])),
+        (_, Directive::Data, line) => line_blocks.push(LineBlock::Data(vec![line])),
+    }
 }
 
 fn comment_start_index(line_pairs: &Vec<(String, String)>) -> usize {
@@ -252,6 +299,7 @@ fn format_line_block(block: LineBlock<&str>) -> LineBlock<String> {
         LineBlock::ProcedureDenoter(line) => LineBlock::ProcedureDenoter(line::format(line)),
         LineBlock::SectionDenoter(line) => LineBlock::SectionDenoter(line::format(line)),
         LineBlock::Code(lines) => LineBlock::Code(format_code_block(&lines)),
+        LineBlock::Data(lines) => LineBlock::Data(format_code_block(&lines)),
         LineBlock::Comment(lines) => {
             LineBlock::Comment(lines.into_iter().map(line::format_comment).collect())
         }
@@ -284,7 +332,7 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
                 out_lines.push(line);
                 BlockCollapseState::AfterProcedure
             }
-            (_, LineBlock::Code(lines)) => {
+            (_, LineBlock::Code(lines) | LineBlock::Data(lines)) => {
                 out_lines.extend(lines);
                 out_lines.push("".into());
                 BlockCollapseState::Preparing
@@ -314,6 +362,28 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
     return out_lines;
 }
 
+// fn split_inline_procedures(lines: &mut Vec<&str>) {
+//     for i in (0..lines.len()).rev() {
+//         let line = lines[i];
+//         if let Some(colon_i) = line.find(':') {
+//             lines.splice(i..=(i + 1), [&line[0..=colon_i], &line[(colon_i + 1)..]]);
+//         }
+//     }
+// }
+
+// fn separate_inline_procedures(blocks: &mut Vec<LineBlock<&str>>) {
+//     for (i, block) in blocks.into_iter().enumerate().rev() {
+//         match block {
+//             LineBlock::Code(lines) => {
+//                 let prev_length = lines.len();
+//                 split_inline_procedures_from_lines(lines);
+//                 if lines.len() != prev_length {}
+//             }
+//             _ => {}
+//         }
+//     }
+// }
+
 fn indent_block(block: &mut LineBlock<String>) {
     match block {
         LineBlock::Code(lines) | LineBlock::Comment(lines) => {
@@ -323,7 +393,10 @@ fn indent_block(block: &mut LineBlock<String>) {
         }
 
         // Directives & Procedures should never be indented
-        LineBlock::Space | LineBlock::ProcedureDenoter(_) | LineBlock::SectionDenoter(_) => {}
+        LineBlock::Space
+        | LineBlock::ProcedureDenoter(_)
+        | LineBlock::SectionDenoter(_)
+        | LineBlock::Data(_) => {}
     }
 }
 
@@ -365,7 +438,7 @@ fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
                     (true, LineBlock::Comment(_)) => indent_block(block),
                     (false, LineBlock::Comment(_)) => {}
 
-                    (_, LineBlock::Space | LineBlock::SectionDenoter(_)) => {}
+                    (_, LineBlock::Space | LineBlock::SectionDenoter(_) | LineBlock::Data(_)) => {}
                 }
             }
         }
