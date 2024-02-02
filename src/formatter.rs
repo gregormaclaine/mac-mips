@@ -372,28 +372,6 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
     return out_lines;
 }
 
-// fn split_inline_procedures(lines: &mut Vec<&str>) {
-//     for i in (0..lines.len()).rev() {
-//         let line = lines[i];
-//         if let Some(colon_i) = line.find(':') {
-//             lines.splice(i..=(i + 1), [&line[0..=colon_i], &line[(colon_i + 1)..]]);
-//         }
-//     }
-// }
-
-// fn separate_inline_procedures(blocks: &mut Vec<LineBlock<&str>>) {
-//     for (i, block) in blocks.into_iter().enumerate().rev() {
-//         match block {
-//             LineBlock::Code(lines) => {
-//                 let prev_length = lines.len();
-//                 split_inline_procedures_from_lines(lines);
-//                 if lines.len() != prev_length {}
-//             }
-//             _ => {}
-//         }
-//     }
-// }
-
 fn indent_block(block: &mut LineBlock<String>) {
     match block {
         LineBlock::Code(lines) | LineBlock::Comment(lines) => {
