@@ -195,3 +195,30 @@ fn procedures_on_same_line_as_instruction() {
         Ok(String::from(expected))
     );
 }
+
+#[test]
+fn directive_modifiers() {
+    let input1a = ".data\n.align 2\no: .space 10";
+    let input1b = ".data\n.align 2\n\n\no: .space 10";
+    let expected1 = ".data\n\n.align 2\no: .space 10\n";
+    assert_eq!(
+        formatter::format(String::from(input1a)),
+        Ok(String::from(expected1))
+    );
+    assert_eq!(
+        formatter::format(String::from(input1b)),
+        Ok(String::from(expected1))
+    );
+
+    let input2a = ".data\no: .space 10\n.align 2";
+    let input2b = ".data\no: .space 10\n\n\n.align 2";
+    let expected2 = ".data\n\no: .space 10\n\n.align 2\n";
+    assert_eq!(
+        formatter::format(String::from(input2a)),
+        Ok(String::from(expected2))
+    );
+    assert_eq!(
+        formatter::format(String::from(input2b)),
+        Ok(String::from(expected2))
+    );
+}

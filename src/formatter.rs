@@ -186,6 +186,7 @@ enum LineBlock<T> {
     Space,
     Code(Vec<T>),
     Data(Vec<T>),
+    DataModifier(T),
     Comment(Vec<T>),
     SectionDenoter(T),
     ProcedureDenoter(T),
@@ -220,6 +221,10 @@ fn consume_line<'a>(
     match (cur_block, &current_dir, line) {
         (LineBlock::Space, _, line) if line.is_empty() => {}
         (_, _, line) if line.is_empty() => line_blocks.push(LineBlock::Space),
+
+        (_, Directive::Data, line) if line.starts_with(".align") => {
+            line_blocks.push(LineBlock::DataModifier(line));
+        }
 
         (_, _, line) if line.starts_with('.') => {
             if line.starts_with(".text") {
@@ -300,6 +305,7 @@ fn format_line_block(block: LineBlock<&str>) -> LineBlock<String> {
         LineBlock::SectionDenoter(line) => LineBlock::SectionDenoter(line::format(line)),
         LineBlock::Code(lines) => LineBlock::Code(format_code_block(&lines)),
         LineBlock::Data(lines) => LineBlock::Data(format_code_block(&lines)),
+        LineBlock::DataModifier(line) => LineBlock::DataModifier(line::format(line)),
         LineBlock::Comment(lines) => {
             LineBlock::Comment(lines.into_iter().map(line::format_comment).collect())
         }
@@ -311,6 +317,7 @@ enum BlockCollapseState {
     Preparing,
     AfterComment,
     AfterProcedure,
+    AfterDataModifer,
 }
 
 fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>) -> Vec<T> {
@@ -319,7 +326,10 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
 
     for block in line_blocks {
         state = match (state, block) {
-            (BlockCollapseState::AfterProcedure, LineBlock::SectionDenoter(line)) => {
+            (
+                BlockCollapseState::AfterProcedure | BlockCollapseState::AfterDataModifer,
+                LineBlock::SectionDenoter(line),
+            ) => {
                 out_lines.extend(["".into(), line, "".into()]);
                 BlockCollapseState::Preparing
             }
@@ -341,16 +351,16 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
                 out_lines.extend(lines);
                 BlockCollapseState::AfterComment
             }
+            (_, LineBlock::DataModifier(line)) => {
+                out_lines.push(line);
+                BlockCollapseState::AfterDataModifer
+            }
 
-            (BlockCollapseState::Preparing, LineBlock::Space) => BlockCollapseState::Preparing,
             (BlockCollapseState::AfterComment, LineBlock::Space) => {
                 out_lines.push("".into());
                 BlockCollapseState::Preparing
             }
-
-            (BlockCollapseState::AfterProcedure, LineBlock::Space) => {
-                BlockCollapseState::AfterProcedure
-            }
+            (state, LineBlock::Space) => state,
         };
     }
 
@@ -396,7 +406,8 @@ fn indent_block(block: &mut LineBlock<String>) {
         LineBlock::Space
         | LineBlock::ProcedureDenoter(_)
         | LineBlock::SectionDenoter(_)
-        | LineBlock::Data(_) => {}
+        | LineBlock::Data(_)
+        | LineBlock::DataModifier(_) => {}
     }
 }
 
@@ -438,7 +449,13 @@ fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
                     (true, LineBlock::Comment(_)) => indent_block(block),
                     (false, LineBlock::Comment(_)) => {}
 
-                    (_, LineBlock::Space | LineBlock::SectionDenoter(_) | LineBlock::Data(_)) => {}
+                    (
+                        _,
+                        LineBlock::Space
+                        | LineBlock::SectionDenoter(_)
+                        | LineBlock::Data(_)
+                        | LineBlock::DataModifier(_),
+                    ) => {}
                 }
             }
         }
