@@ -4,14 +4,8 @@ static MAX_COMMENT_DISPARITY: usize = 10;
 
 mod line {
     #[derive(Debug)]
-    enum TokenisationState {
-        Token(String),
-        StringLiteral(String),
-        Waiting,
-    }
-
-    #[derive(Debug)]
     enum CodeToken {
+        Space,
         Item(String),
         Comma,
         Colon,
@@ -23,6 +17,7 @@ mod line {
     impl CodeToken {
         fn to_string(&self) -> String {
             return match self {
+                CodeToken::Space => String::new(),
                 CodeToken::Comma => String::from(","),
                 CodeToken::Colon => String::from(":"),
                 CodeToken::ParenOpen => String::from("("),
@@ -31,72 +26,47 @@ mod line {
                 CodeToken::Literal(string) => format!("\"{}\"", string),
             };
         }
-    }
 
-    fn code_token_from_char(c: char) -> CodeToken {
-        match c {
-            ',' => CodeToken::Comma,
-            ':' => CodeToken::Colon,
-            '(' => CodeToken::ParenOpen,
-            ')' => CodeToken::ParenClose,
-            _ => panic!(),
+        fn from(c: char) -> Self {
+            match c {
+                ',' => CodeToken::Comma,
+                ':' => CodeToken::Colon,
+                '(' => CodeToken::ParenOpen,
+                ')' => CodeToken::ParenClose,
+                _ => panic!(),
+            }
         }
     }
 
     fn tokenise_line(code: &str) -> Vec<CodeToken> {
-        let mut tokens: Vec<CodeToken> = Vec::new();
-        let mut state = TokenisationState::Waiting;
+        let mut tokens = vec![CodeToken::Space];
 
         for c in code.chars() {
-            state = receive_next_char(state, c, &mut tokens);
+            let cur_token = tokens.last_mut().unwrap();
+            match (cur_token, c) {
+                (CodeToken::Literal(cur), '"') if !cur.ends_with('\\') => {
+                    tokens.push(CodeToken::Space)
+                }
+                (CodeToken::Literal(cur), c) => *cur += &c.to_string(),
+
+                (CodeToken::Space, c) if c.is_whitespace() => {}
+                (_, c) if c.is_whitespace() => tokens.push(CodeToken::Space),
+
+                (_, ',' | ':' | '(' | ')') => tokens.push(CodeToken::from(c)),
+                (_, '"') => tokens.push(CodeToken::Literal(String::new())),
+
+                (CodeToken::Item(cur), c) => *cur += &c.to_string(),
+                (_, c) => tokens.push(CodeToken::Item(c.into())),
+            }
         }
 
-        match state {
-            TokenisationState::Waiting => {}
-            TokenisationState::Token(cur) => tokens.push(CodeToken::Item(cur)),
-            TokenisationState::StringLiteral(cur) => tokens.push(CodeToken::Literal(cur)),
-        }
-
-        return tokens;
-    }
-
-    fn receive_next_char(
-        state: TokenisationState,
-        c: char,
-        tokens: &mut Vec<CodeToken>,
-    ) -> TokenisationState {
-        match (state, c) {
-            (TokenisationState::Waiting, ',' | ':' | '(' | ')') => {
-                tokens.push(code_token_from_char(c));
-                return TokenisationState::Waiting;
-            }
-            (TokenisationState::Waiting, c) if c.is_whitespace() => TokenisationState::Waiting,
-            (TokenisationState::Waiting, '"') => TokenisationState::StringLiteral(String::new()),
-            (TokenisationState::Waiting, c) => TokenisationState::Token(String::from(c)),
-
-            (TokenisationState::StringLiteral(cur), '"') if !cur.ends_with('\\') => {
-                tokens.push(CodeToken::Literal(cur));
-                return TokenisationState::Waiting;
-            }
-            (TokenisationState::StringLiteral(cur), c) => {
-                TokenisationState::StringLiteral(cur + &c.to_string())
-            }
-
-            (TokenisationState::Token(cur), c) if c.is_whitespace() => {
-                tokens.push(CodeToken::Item(cur));
-                return TokenisationState::Waiting;
-            }
-            (TokenisationState::Token(cur), ',' | ':' | '(' | ')') => {
-                tokens.push(CodeToken::Item(cur));
-                tokens.push(code_token_from_char(c));
-                return TokenisationState::Waiting;
-            }
-            (TokenisationState::Token(cur), '"') => {
-                tokens.push(CodeToken::Item(cur));
-                return TokenisationState::StringLiteral(String::new());
-            }
-            (TokenisationState::Token(cur), c) => TokenisationState::Token(cur + &c.to_string()),
-        }
+        return tokens
+            .into_iter()
+            .filter(|t| match t {
+                CodeToken::Space => false,
+                _ => true,
+            })
+            .collect();
     }
 
     #[derive(Debug)]
