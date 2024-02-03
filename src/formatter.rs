@@ -69,7 +69,7 @@ mod line {
             .collect();
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct CodeLine {
         code: Option<String>,
         comment: Option<String>,
@@ -97,6 +97,36 @@ mod line {
                 return CodeLine::new(Some(line.trim().into()), None);
             }
         }
+
+        fn format(&mut self) {
+            if let Some(code) = &mut self.code {
+                let tokens = tokenise_line(&code);
+                *code = tokens[0].to_string();
+
+                for pair in tokens.windows(2) {
+                    if should_be_spaced(&pair[0], &pair[1]) {
+                        *code += " ";
+                    }
+                    *code += &pair[1].to_string();
+                }
+            }
+        }
+
+        fn code_w(&self) -> usize {
+            match self.code {
+                Some(code) => code.len(),
+                None => 0,
+            }
+        }
+
+        fn to_string(&self) -> String {
+            match (self.code, self.comment) {
+                (Some(code), Some(comment)) => format!("{}  # {}", code, comment),
+                (Some(code), None) => code.into(),
+                (None, Some(comment)) => format!("# {}", comment),
+                (None, None) => String::new(),
+            }
+        }
     }
 
     fn should_be_spaced(left: &CodeToken, right: &CodeToken) -> bool {
@@ -107,42 +137,6 @@ mod line {
             ) => true,
             (CodeToken::Comma, CodeToken::ParenOpen) => true,
             (_, _) => false,
-        }
-    }
-
-    pub fn format_code(code: &str) -> String {
-        let tokens = tokenise_line(code);
-
-        if tokens.is_empty() {
-            return String::new();
-        }
-
-        let mut formatted_code = tokens[0].to_string();
-
-        for pair in tokens.windows(2) {
-            if should_be_spaced(&pair[0], &pair[1]) {
-                formatted_code += " ";
-            }
-            formatted_code += &pair[1].to_string();
-        }
-
-        return formatted_code;
-    }
-
-    pub fn format_comment(line: &str) -> String {
-        return format!("# {}", line[1..].trim());
-    }
-
-    pub fn format(line: &str) -> String {
-        let code_line = CodeLine::parse(line);
-        match (code_line.code, code_line.comment) {
-            (Some(code), Some(comment)) => {
-                let formatted_code = format_code(&code);
-                return formatted_code + "  # " + &comment;
-            }
-            (Some(code), None) => format_code(&code),
-            (None, Some(comment)) => format_comment(&comment),
-            (None, None) => String::new(),
         }
     }
 
