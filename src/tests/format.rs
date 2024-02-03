@@ -55,6 +55,16 @@ fn preserve_comments() {
 }
 
 #[test]
+fn comments_every_line() {
+    let input = ".text # 1\nmain: #2\nli $v0, 1#3";
+    let expected = ".text  # 1\n\nmain:  # 2\n\tli $v0, 1  # 3\n";
+    assert_eq!(
+        formatter::format(String::from(input)),
+        Ok(String::from(expected))
+    );
+}
+
+#[test]
 fn mislaid_commas() {
     let input = "li $v0 ,1\n";
     let expected = "li $v0, 1\n";

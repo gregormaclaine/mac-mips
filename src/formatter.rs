@@ -122,7 +122,7 @@ mod line {
             return formatted_code;
         }
 
-        return formatted_code + " # " + comment;
+        return formatted_code + "  # " + comment;
     }
 }
 
@@ -134,9 +134,11 @@ enum SplitLine<'a> {
 
 fn possibly_split_line<'a>(line: &'a str) -> SplitLine<'a> {
     if let Some(colon_i) = line.find(':') {
-        if let Some(comment_i) = line.find('#') {
-            if colon_i < comment_i {
-                return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+        if let Some(hash_i) = line.find('#') {
+            if colon_i < hash_i {
+                if !&line[(colon_i + 1)..hash_i].trim().is_empty() {
+                    return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+                }
             }
         } else {
             return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
