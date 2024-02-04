@@ -1,5 +1,7 @@
 use std::fmt::Error;
 
+use self::line::CodeLine;
+
 static MAX_COMMENT_DISPARITY: usize = 10;
 
 mod line {
@@ -71,13 +73,26 @@ mod line {
 
     #[derive(Debug, Clone)]
     pub struct CodeLine {
-        code: Option<String>,
-        comment: Option<String>,
+        pub code: Option<String>,
+        pub comment: Option<String>,
+        pub com_gap: Option<usize>,
+        indent: usize,
+    }
+
+    impl Default for CodeLine {
+        fn default() -> Self {
+            CodeLine::new(None, None)
+        }
     }
 
     impl CodeLine {
         fn new(code: Option<String>, comment: Option<String>) -> Self {
-            CodeLine { code, comment }
+            CodeLine {
+                code,
+                comment,
+                com_gap: None,
+                indent: 0,
+            }
         }
 
         pub fn parse(line: &str) -> Self {
@@ -112,20 +127,70 @@ mod line {
             }
         }
 
+        pub fn is_comment_only(&self) -> bool {
+            match (&self.code, &self.comment) {
+                (None, Some(_)) => true,
+                _ => false,
+            }
+        }
+
         pub fn code_w(&self) -> usize {
-            match self.code {
+            match &self.code {
                 Some(code) => code.len(),
                 None => 0,
             }
         }
 
-        pub fn to_string(&self) -> String {
-            match (self.code, self.comment) {
-                (Some(code), Some(comment)) => format!("{}  # {}", code, comment),
+        pub fn is_empty(&self) -> bool {
+            match (&self.code, &self.comment) {
+                (None, None) => true,
+                (_, _) => false,
+            }
+        }
+
+        pub fn starts_with(&self, pat: &str) -> bool {
+            match &self.code {
+                Some(code) => code.starts_with(pat),
+                None => false,
+            }
+        }
+
+        pub fn ends_with(&self, pat: &str) -> bool {
+            match &self.code {
+                Some(code) => code.ends_with(pat),
+                None => false,
+            }
+        }
+
+        pub fn indent(&mut self) {
+            self.indent += 1;
+        }
+
+        pub fn set_hash_index(&mut self, h_index: usize) {
+            self.com_gap = if h_index >= self.code_w() {
+                Some(h_index - self.code_w())
+            } else {
+                None
+            };
+        }
+
+        fn to_string_without_indent(&self) -> String {
+            match (&self.code, &self.comment) {
+                (None, None) => String::new(),
                 (Some(code), None) => code.into(),
                 (None, Some(comment)) => format!("# {}", comment),
-                (None, None) => String::new(),
+                (Some(code), Some(comment)) => {
+                    let comment_gap = (0..self.com_gap.unwrap_or(2))
+                        .map(|_| " ")
+                        .collect::<String>();
+                    format!("{}{}# {}", code, comment_gap, comment)
+                }
             }
+        }
+
+        pub fn to_string(&self) -> String {
+            let indents: String = (0..self.indent).map(|_| "\t").collect();
+            return indents + &self.to_string_without_indent();
         }
     }
 
@@ -149,9 +214,11 @@ mod line {
     impl<'a> SplitLine<'a> {
         pub fn parse(line: &'a str) -> SplitLine<'a> {
             if let Some(colon_i) = line.find(':') {
-                if let Some(comment_i) = line.find('#') {
-                    if colon_i < comment_i {
-                        return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+                if let Some(hash_i) = line.find('#') {
+                    if colon_i < hash_i {
+                        if !&line[(colon_i + 1)..hash_i].trim().is_empty() {
+                            return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+                        }
                     }
                 } else {
                     return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
@@ -335,16 +402,13 @@ fn parse_chunks<'a>(section: &mut Section) {
 //     }
 // }
 
-fn comment_start_index(line_pairs: &Vec<(String, String)>) -> usize {
-    let max_length_all = line_pairs.iter().map(|l| l.0.len()).max().unwrap_or(0);
-    let max_length_comments = line_pairs
+fn comment_start_index(lines: &Vec<CodeLine>) -> usize {
+    let max_length_all = lines.iter().map(|l| l.code_w()).max().unwrap_or(0);
+    let max_length_comments = lines
         .iter()
-        .filter_map(|l| {
-            if l.1.is_empty() {
-                None
-            } else {
-                Some(l.0.len())
-            }
+        .filter_map(|l| match l.comment {
+            Some(_) => Some(l.code_w()),
+            None => None,
         })
         .max()
         .unwrap_or(0);
@@ -356,42 +420,23 @@ fn comment_start_index(line_pairs: &Vec<(String, String)>) -> usize {
     }
 }
 
-fn format_code_block(lines: &Vec<&str>) -> Vec<String> {
-    let block: Vec<(String, String)> = lines
-        .iter()
-        .map(|l| {
-            let (code, comment) = line::split_code_from_comment(l);
-            (line::format_code(code), String::from(comment))
-        })
-        .collect();
-
-    let comment_index = comment_start_index(&block);
-
-    return block
-        .iter()
-        .map(|(code, comment)| {
-            if comment.is_empty() {
-                return code.clone();
-            }
-
-            let comment_indent = comment_index - code.len();
-            let comment_gap = (0..comment_indent).map(|_| " ").collect::<String>();
-            return format!("{}{}# {}", code, comment_gap, comment);
-        })
-        .collect();
+fn format_code_block(lines: &mut Vec<CodeLine>) {
+    lines.into_iter().for_each(|l| l.format());
+    let comment_index = comment_start_index(&lines);
+    lines
+        .into_iter()
+        .for_each(|l| l.set_hash_index(comment_index));
 }
 
-fn format_line_block(block: LineBlock<&str>) -> LineBlock<String> {
+fn format_line_block(block: &mut LineBlock<CodeLine>) {
     match block {
-        LineBlock::Space => LineBlock::Space,
-        LineBlock::ProcedureDenoter(line) => LineBlock::ProcedureDenoter(line::format(line)),
-        LineBlock::SectionDenoter(line) => LineBlock::SectionDenoter(line::format(line)),
-        LineBlock::Code(lines) => LineBlock::Code(format_code_block(&lines)),
-        LineBlock::Data(lines) => LineBlock::Data(format_code_block(&lines)),
-        LineBlock::DataModifier(line) => LineBlock::DataModifier(line::format(line)),
-        LineBlock::Comment(lines) => {
-            LineBlock::Comment(lines.into_iter().map(line::format_comment).collect())
-        }
+        LineBlock::ProcedureDenoter(line)
+        | LineBlock::SectionDenoter(line)
+        | LineBlock::DataModifier(line) => line.format(),
+
+        LineBlock::Code(lines) | LineBlock::Data(lines) => format_code_block(lines),
+        LineBlock::Comment(lines) => lines.into_iter().for_each(|l| l.format()),
+        LineBlock::Space => {}
     }
 }
 
@@ -403,7 +448,7 @@ enum BlockCollapseState {
     AfterDataModifer,
 }
 
-fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>) -> Vec<T> {
+fn consume_line_blocks<T: Default>(line_blocks: Vec<LineBlock<T>>) -> Vec<T> {
     let mut out_lines: Vec<T> = Vec::new();
     let mut state = BlockCollapseState::Preparing;
 
@@ -413,11 +458,11 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
                 BlockCollapseState::AfterProcedure | BlockCollapseState::AfterDataModifer,
                 LineBlock::SectionDenoter(line),
             ) => {
-                out_lines.extend(["".into(), line, "".into()]);
+                out_lines.extend([T::default(), line, T::default()]);
                 BlockCollapseState::Preparing
             }
             (_, LineBlock::SectionDenoter(line)) => {
-                out_lines.extend([line, "".into()]);
+                out_lines.extend([line, T::default()]);
                 BlockCollapseState::Preparing
             }
 
@@ -427,7 +472,7 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
             }
             (_, LineBlock::Code(lines) | LineBlock::Data(lines)) => {
                 out_lines.extend(lines);
-                out_lines.push("".into());
+                out_lines.push(T::default());
                 BlockCollapseState::Preparing
             }
             (_, LineBlock::Comment(lines)) => {
@@ -440,7 +485,7 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
             }
 
             (BlockCollapseState::AfterComment, LineBlock::Space) => {
-                out_lines.push("".into());
+                out_lines.push(T::default());
                 BlockCollapseState::Preparing
             }
             (state, LineBlock::Space) => state,
@@ -449,31 +494,14 @@ fn consume_line_blocks<T: for<'a> From<&'a str>>(line_blocks: Vec<LineBlock<T>>)
 
     match state {
         BlockCollapseState::Preparing => {}
-        _ => out_lines.push("".into()),
+        _ => out_lines.push(T::default()),
     }
 
     return out_lines;
 }
 
-fn indent_block(block: &mut LineBlock<String>) {
-    match block {
-        LineBlock::Code(lines) | LineBlock::Comment(lines) => {
-            for line in lines {
-                *line = String::from("\t") + line;
-            }
-        }
-
-        // Directives & Procedures should never be indented
-        LineBlock::Space
-        | LineBlock::ProcedureDenoter(_)
-        | LineBlock::SectionDenoter(_)
-        | LineBlock::Data(_)
-        | LineBlock::DataModifier(_) => {}
-    }
-}
-
-fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
-    let mut text_chunks: Vec<Vec<&mut LineBlock<String>>> = vec![Vec::new()];
+fn indent_blocks(blocks: &mut Vec<LineBlock<CodeLine>>) {
+    let mut text_chunks: Vec<Vec<&mut LineBlock<CodeLine>>> = vec![Vec::new()];
     let mut in_data_chunk = false;
 
     for block in blocks {
@@ -500,14 +528,14 @@ fn indent_blocks(blocks: &mut Vec<LineBlock<String>>) {
             let mut should_indent = false;
 
             for block in chunk.into_iter().skip(index + 1).rev() {
-                match (should_indent, &block) {
+                match (should_indent, block) {
                     (_, LineBlock::ProcedureDenoter(_)) => should_indent = false,
-                    (_, LineBlock::Code(_)) => {
+                    (_, LineBlock::Code(lines)) => {
                         should_indent = true;
-                        indent_block(block);
+                        lines.into_iter().for_each(|l| l.indent());
                     }
 
-                    (true, LineBlock::Comment(_)) => indent_block(block),
+                    (true, LineBlock::Comment(lines)) => lines.into_iter().for_each(|l| l.indent()),
                     (false, LineBlock::Comment(_)) => {}
 
                     (
@@ -527,18 +555,22 @@ pub fn format(contents: String) -> Result<String, Error> {
     let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
 
     let mut sections = parse_sections(&raw_lines);
-    for section in sections {
-        parse_chunks(&mut section);
-    }
+    sections.into_iter().for_each(parse_chunks);
 
     // let blocks: Vec<LineBlock<&str>> = split_into_line_blocks(&raw_lines);
 
     let mut formatted_blocks: Vec<LineBlock<String>> =
         blocks.into_iter().map(format_line_block).collect();
+    let mut blocks = split_into_line_blocks(&raw_lines);
 
-    indent_blocks(&mut formatted_blocks);
+    blocks.iter_mut().for_each(format_line_block);
+    indent_blocks(&mut blocks);
 
-    let lines: Vec<String> = consume_line_blocks(formatted_blocks);
+    let lines = consume_line_blocks(blocks);
 
-    Ok(lines.join("\n"))
+    Ok(lines
+        .into_iter()
+        .map(|l| l.to_string())
+        .collect::<Vec<String>>()
+        .join("\n"))
 }
