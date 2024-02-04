@@ -127,6 +127,13 @@ mod line {
             }
         }
 
+        pub fn is_comment_only(&self) -> bool {
+            match (&self.code, &self.comment) {
+                (None, Some(_)) => true,
+                _ => false,
+            }
+        }
+
         pub fn code_w(&self) -> usize {
             match &self.code {
                 Some(code) => code.len(),
@@ -290,10 +297,10 @@ fn consume_line<'a>(
             line_blocks.push(LineBlock::ProcedureDenoter(line))
         }
 
-        (LineBlock::Comment(cur), _, line) if line.starts_with("#") => {
+        (LineBlock::Comment(cur), _, line) if line.is_comment_only() => {
             cur.push(line);
         }
-        (_, _, line) if line.starts_with("#") => line_blocks.push(LineBlock::Comment(vec![line])),
+        (_, _, line) if line.is_comment_only() => line_blocks.push(LineBlock::Comment(vec![line])),
 
         (LineBlock::Code(cur) | LineBlock::Data(cur), _, line) => {
             cur.push(line);
@@ -455,8 +462,8 @@ fn indent_blocks(blocks: &mut Vec<LineBlock<CodeLine>>) {
 pub fn format(contents: String) -> Result<String, Error> {
     let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
     let mut blocks = split_into_line_blocks(&raw_lines);
-    blocks.iter_mut().for_each(format_line_block);
 
+    blocks.iter_mut().for_each(format_line_block);
     indent_blocks(&mut blocks);
 
     let lines = consume_line_blocks(blocks);
