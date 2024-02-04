@@ -15,7 +15,7 @@ mod line {
     }
 
     impl CodeToken {
-        fn to_string(&self) -> String {
+        pub fn to_string(&self) -> String {
             return match self {
                 CodeToken::Space => String::new(),
                 CodeToken::Comma => String::from(","),
@@ -27,7 +27,7 @@ mod line {
             };
         }
 
-        fn from(c: char) -> Self {
+        pub fn from(c: char) -> Self {
             match c {
                 ',' => CodeToken::Comma,
                 ':' => CodeToken::Colon,
@@ -80,7 +80,7 @@ mod line {
             CodeLine { code, comment }
         }
 
-        fn parse(line: &str) -> Self {
+        pub fn parse(line: &str) -> Self {
             if line.is_empty() {
                 return CodeLine::new(None, None);
             }
@@ -98,7 +98,7 @@ mod line {
             }
         }
 
-        fn format(&mut self) {
+        pub fn format(&mut self) {
             if let Some(code) = &mut self.code {
                 let tokens = tokenise_line(&code);
                 *code = tokens[0].to_string();
@@ -112,14 +112,14 @@ mod line {
             }
         }
 
-        fn code_w(&self) -> usize {
+        pub fn code_w(&self) -> usize {
             match self.code {
                 Some(code) => code.len(),
                 None => 0,
             }
         }
 
-        fn to_string(&self) -> String {
+        pub fn to_string(&self) -> String {
             match (self.code, self.comment) {
                 (Some(code), Some(comment)) => format!("{}  # {}", code, comment),
                 (Some(code), None) => code.into(),
@@ -146,17 +146,19 @@ mod line {
         Two((&'a str, &'a str)),
     }
 
-    pub fn possibly_split_line<'a>(line: &'a str) -> SplitLine<'a> {
-        if let Some(colon_i) = line.find(':') {
-            if let Some(comment_i) = line.find('#') {
-                if colon_i < comment_i {
+    impl<'a> SplitLine<'a> {
+        pub fn parse(line: &'a str) -> SplitLine<'a> {
+            if let Some(colon_i) = line.find(':') {
+                if let Some(comment_i) = line.find('#') {
+                    if colon_i < comment_i {
+                        return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
+                    }
+                } else {
                     return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
                 }
-            } else {
-                return SplitLine::Two((&line[..=colon_i], &line[(colon_i + 1)..]));
             }
+            return SplitLine::One(line);
         }
-        return SplitLine::One(line);
     }
 }
 
@@ -176,19 +178,19 @@ enum Chunk {
 }
 
 #[derive(Debug)]
-struct Section<'a> {
+struct Section {
     dir: Directive,
     dir_line: Option<String>,
-    lines: Vec<&'a str>,
+    lines: Vec<line::CodeLine>,
     chunks: Option<Vec<Chunk>>,
 }
 
-impl<'a> Section<'a> {
-    fn new(line: &'a str, dir: Directive) -> Self {
+impl Section {
+    fn new(line: &str, dir: Directive) -> Self {
         let dir_line = if line.is_empty() {
             None
         } else {
-            Some(line::format(line))
+            Some(line::CodeLine::parse(line))
         };
 
         Section {
@@ -213,7 +215,7 @@ fn parse_sections<'a>(lines: &Vec<&'a str>) -> Vec<Section<'a>> {
                 sections.push(Section::new(line, Directive::Data));
             }
             (Directive::Data, line) => cur_section.lines.push(line),
-            (Directive::Text, line) => match line::possibly_split_line(line) {
+            (Directive::Text, line) => match line::SplitLine::parse(line) {
                 line::SplitLine::One(line) => cur_section.lines.push(line),
                 line::SplitLine::Two((part1, part2)) => cur_section.lines.extend([part1, part2]),
             },
@@ -223,7 +225,7 @@ fn parse_sections<'a>(lines: &Vec<&'a str>) -> Vec<Section<'a>> {
     return sections;
 }
 
-fn parse_chunks<'a>(section: &mut Section<'a>) {
+fn parse_chunks<'a>(section: &mut Section) {
     let mut chunks = vec![Chunk::Space];
 
     for line in section.lines.iter() {
