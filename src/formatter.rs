@@ -1,6 +1,7 @@
 use std::fmt::Error;
 
 use self::line::CodeLine;
+use self::line::SplitLine;
 
 static MAX_COMMENT_DISPARITY: usize = 10;
 
@@ -236,81 +237,98 @@ enum Directive {
 }
 
 #[derive(Debug)]
-enum LineBlock<T> {
+enum Chunk {
     Space,
-    Code(Vec<T>),
-    Data(Vec<T>),
-    DataModifier(T),
-    Comment(Vec<T>),
-    SectionDenoter(T),
-    ProcedureDenoter(T),
+    GlobDec(CodeLine),
+    Modifier(CodeLine),
+    Code(Vec<CodeLine>),
+    Comment(Vec<CodeLine>),
 }
 
-fn split_into_line_blocks(lines: &Vec<&str>) -> Vec<LineBlock<CodeLine>> {
-    let mut line_blocks: Vec<LineBlock<CodeLine>> = vec![LineBlock::Space];
-    let mut current_dir = Directive::Text;
+#[derive(Debug)]
+struct Section {
+    dir: Directive,
+    dir_line: Option<CodeLine>,
+    lines: Vec<CodeLine>,
+}
+
+impl Section {
+    fn new(line: &str, dir: Directive) -> Self {
+        let dir_line = if line.is_empty() {
+            None
+        } else {
+            Some(CodeLine::parse(line))
+        };
+
+        Section {
+            dir,
+            dir_line,
+            lines: Vec::new(),
+        }
+    }
+}
+
+fn parse_sections(lines: &Vec<&str>) -> Vec<Section> {
+    let mut sections: Vec<Section> = vec![Section::new("", Directive::Text)];
 
     for line in lines {
-        match current_dir {
-            Directive::Data => consume_line(&mut line_blocks, &mut current_dir, line),
-            Directive::Text => match line::SplitLine::parse(line) {
-                line::SplitLine::One(line) => {
-                    consume_line(&mut line_blocks, &mut current_dir, line)
-                }
-                line::SplitLine::Two((part1, part2)) => {
-                    consume_line(&mut line_blocks, &mut current_dir, part1);
-                    consume_line(&mut line_blocks, &mut current_dir, part2);
-                }
+        let cur_section = sections.last_mut().unwrap();
+        match (&cur_section.dir, line) {
+            (_, line) if line.starts_with(".text") => {
+                sections.push(Section::new(line, Directive::Text));
+            }
+            (_, line) if line.starts_with(".data") => {
+                sections.push(Section::new(line, Directive::Data));
+            }
+            (Directive::Data, line) => cur_section.lines.push(CodeLine::parse(line)),
+            (Directive::Text, line) => match SplitLine::parse(line) {
+                SplitLine::One(line) => cur_section.lines.push(CodeLine::parse(line)),
+                SplitLine::Two((part1, part2)) => cur_section
+                    .lines
+                    .extend([CodeLine::parse(part1), CodeLine::parse(part2)]),
             },
         }
     }
 
-    return line_blocks;
+    return sections;
 }
 
-fn consume_line<'a>(
-    line_blocks: &mut Vec<LineBlock<CodeLine>>,
-    current_dir: &mut Directive,
-    line: &'a str,
-) {
-    let cur_block = line_blocks.last_mut().unwrap();
-    let code_line = CodeLine::parse(line);
+fn parse_chunks(lines: Vec<CodeLine>, dir: &Directive) -> Vec<Chunk> {
+    let mut chunks = vec![Chunk::Space];
 
-    match (cur_block, &current_dir, code_line) {
-        (LineBlock::Space, _, line) if line.is_empty() => {}
-        (_, _, line) if line.is_empty() => line_blocks.push(LineBlock::Space),
+    for line in lines {
+        let cur_chunk = chunks.last_mut().unwrap();
+        match (cur_chunk, dir, line) {
+            (Chunk::Space, _, line) if line.is_empty() => {}
+            (_, _, line) if line.is_empty() => chunks.push(Chunk::Space),
+            (_, _, line) if line.starts_with(".globl") => chunks.push(Chunk::GlobDec(line)),
 
-        (_, Directive::Data, line) if line.starts_with(".align") => {
-            line_blocks.push(LineBlock::DataModifier(line));
-        }
-
-        (_, _, line) if line.starts_with(".") => {
-            if line.starts_with(".text") {
-                *current_dir = Directive::Text;
-            } else if line.starts_with(".data") {
-                *current_dir = Directive::Data;
+            // === COMMENT PARSING ===
+            (Chunk::Comment(cur), _, line) if line.is_comment_only() => {
+                cur.push(line);
             }
-            line_blocks.push(LineBlock::SectionDenoter(line))
-        }
+            (_, _, line) if line.is_comment_only() => chunks.push(Chunk::Comment(vec![line])),
 
-        (_, Directive::Text, line) if line.ends_with(":") => {
-            line_blocks.push(LineBlock::ProcedureDenoter(line))
-        }
+            // === Modifiers ===
+            (_, Directive::Data, line) if line.starts_with(".align") => {
+                chunks.push(Chunk::Modifier(line));
+            }
+            (_, Directive::Text, line) if line.ends_with(":") => {
+                chunks.push(Chunk::Modifier(line));
+            }
 
-        (LineBlock::Comment(cur), _, line) if line.is_comment_only() => {
-            cur.push(line);
+            // === STANDARD LINES ===
+            (Chunk::Code(cur), _, line) => {
+                cur.push(line);
+            }
+            (_, _, line) => chunks.push(Chunk::Code(vec![line])),
         }
-        (_, _, line) if line.is_comment_only() => line_blocks.push(LineBlock::Comment(vec![line])),
-
-        (LineBlock::Code(cur) | LineBlock::Data(cur), _, line) => {
-            cur.push(line);
-        }
-        (_, Directive::Text, line) => line_blocks.push(LineBlock::Code(vec![line])),
-        (_, Directive::Data, line) => line_blocks.push(LineBlock::Data(vec![line])),
     }
+
+    return chunks;
 }
 
-fn comment_start_index(lines: &Vec<CodeLine>) -> usize {
+fn calc_hash_index(lines: &Vec<CodeLine>) -> usize {
     let max_length_all = lines.iter().map(|l| l.code_w()).max().unwrap_or(0);
     let max_length_comments = lines
         .iter()
@@ -328,147 +346,116 @@ fn comment_start_index(lines: &Vec<CodeLine>) -> usize {
     }
 }
 
-fn format_code_block(lines: &mut Vec<CodeLine>) {
-    lines.into_iter().for_each(|l| l.format());
-    let comment_index = comment_start_index(&lines);
-    lines
-        .into_iter()
-        .for_each(|l| l.set_hash_index(comment_index));
+fn align_comments(chunk: &mut Chunk) {
+    if let Chunk::Code(lines) = chunk {
+        let comment_index = calc_hash_index(&lines);
+        lines
+            .into_iter()
+            .for_each(|l| l.set_hash_index(comment_index));
+    }
 }
 
-fn format_line_block(block: &mut LineBlock<CodeLine>) {
-    match block {
-        LineBlock::ProcedureDenoter(line)
-        | LineBlock::SectionDenoter(line)
-        | LineBlock::DataModifier(line) => line.format(),
+fn indent_chunks(chunks: &mut Vec<Chunk>) {
+    let first_proc_index = chunks.iter().enumerate().find_map(|(i, b)| match b {
+        Chunk::Modifier(_) => Some(i),
+        _ => None,
+    });
 
-        LineBlock::Code(lines) | LineBlock::Data(lines) => format_code_block(lines),
-        LineBlock::Comment(lines) => lines.into_iter().for_each(|l| l.format()),
-        LineBlock::Space => {}
+    if let Some(index) = first_proc_index {
+        let mut should_indent = false;
+
+        for block in chunks.into_iter().skip(index + 1).rev() {
+            match (should_indent, block) {
+                (_, Chunk::Modifier(_)) => should_indent = false,
+                (_, Chunk::Code(lines)) => {
+                    should_indent = true;
+                    lines.into_iter().for_each(|l| l.indent());
+                }
+
+                (true, Chunk::Comment(lines)) => lines.into_iter().for_each(|l| l.indent()),
+                (false, Chunk::Comment(_)) => {}
+
+                (_, Chunk::Space | Chunk::GlobDec(_)) => {}
+            }
+        }
     }
 }
 
 #[derive(Debug)]
-enum BlockCollapseState {
-    Preparing,
+enum CompileState {
+    Free,
     AfterComment,
-    AfterProcedure,
-    AfterDataModifer,
+    AfterModifier,
 }
 
-fn consume_line_blocks<T: Default>(line_blocks: Vec<LineBlock<T>>) -> Vec<T> {
-    let mut out_lines: Vec<T> = Vec::new();
-    let mut state = BlockCollapseState::Preparing;
+fn compile_section(lines: &mut Vec<CodeLine>, dir_line: Option<CodeLine>, chunks: Vec<Chunk>) {
+    if let Some(dir_line) = dir_line {
+        lines.extend([dir_line, CodeLine::default()]);
+    }
 
-    for block in line_blocks {
+    let mut state = CompileState::Free;
+
+    for block in chunks {
         state = match (state, block) {
-            (
-                BlockCollapseState::AfterProcedure | BlockCollapseState::AfterDataModifer,
-                LineBlock::SectionDenoter(line),
-            ) => {
-                out_lines.extend([T::default(), line, T::default()]);
-                BlockCollapseState::Preparing
+            (CompileState::Free, Chunk::GlobDec(line)) => {
+                lines.extend([line, CodeLine::default()]);
+                CompileState::Free
             }
-            (_, LineBlock::SectionDenoter(line)) => {
-                out_lines.extend([line, T::default()]);
-                BlockCollapseState::Preparing
+            (_, Chunk::GlobDec(line)) => {
+                lines.extend([CodeLine::default(), line, CodeLine::default()]);
+                CompileState::Free
             }
 
-            (_, LineBlock::ProcedureDenoter(line)) => {
-                out_lines.push(line);
-                BlockCollapseState::AfterProcedure
+            (_, Chunk::Code(_lines)) => {
+                lines.extend(_lines);
+                lines.push(CodeLine::default());
+                CompileState::Free
             }
-            (_, LineBlock::Code(lines) | LineBlock::Data(lines)) => {
-                out_lines.extend(lines);
-                out_lines.push(T::default());
-                BlockCollapseState::Preparing
+            (_, Chunk::Comment(_lines)) => {
+                lines.extend(_lines);
+                CompileState::AfterComment
             }
-            (_, LineBlock::Comment(lines)) => {
-                out_lines.extend(lines);
-                BlockCollapseState::AfterComment
-            }
-            (_, LineBlock::DataModifier(line)) => {
-                out_lines.push(line);
-                BlockCollapseState::AfterDataModifer
+            (_, Chunk::Modifier(line)) => {
+                lines.push(line);
+                CompileState::AfterModifier
             }
 
-            (BlockCollapseState::AfterComment, LineBlock::Space) => {
-                out_lines.push(T::default());
-                BlockCollapseState::Preparing
+            (CompileState::AfterComment, Chunk::Space) => {
+                lines.push(CodeLine::default());
+                CompileState::Free
             }
-            (state, LineBlock::Space) => state,
+            (state, Chunk::Space) => state,
         };
     }
 
     match state {
-        BlockCollapseState::Preparing => {}
-        _ => out_lines.push(T::default()),
-    }
-
-    return out_lines;
-}
-
-fn indent_blocks(blocks: &mut Vec<LineBlock<CodeLine>>) {
-    let mut text_chunks: Vec<Vec<&mut LineBlock<CodeLine>>> = vec![Vec::new()];
-    let mut in_data_chunk = false;
-
-    for block in blocks {
-        match (in_data_chunk, block) {
-            (_, LineBlock::SectionDenoter(line)) if line.starts_with(".data") => {
-                in_data_chunk = true;
-            }
-            (_, LineBlock::SectionDenoter(line)) if line.starts_with(".text") => {
-                in_data_chunk = false;
-                text_chunks.push(Vec::new());
-            }
-            (false, block) => text_chunks.last_mut().unwrap().push(block),
-            (_, _) => {}
-        }
-    }
-
-    for chunk in text_chunks {
-        let first_proc_index = chunk.iter().enumerate().find_map(|(i, b)| match b {
-            LineBlock::ProcedureDenoter(_) => Some(i),
-            _ => None,
-        });
-
-        if let Some(index) = first_proc_index {
-            let mut should_indent = false;
-
-            for block in chunk.into_iter().skip(index + 1).rev() {
-                match (should_indent, block) {
-                    (_, LineBlock::ProcedureDenoter(_)) => should_indent = false,
-                    (_, LineBlock::Code(lines)) => {
-                        should_indent = true;
-                        lines.into_iter().for_each(|l| l.indent());
-                    }
-
-                    (true, LineBlock::Comment(lines)) => lines.into_iter().for_each(|l| l.indent()),
-                    (false, LineBlock::Comment(_)) => {}
-
-                    (
-                        _,
-                        LineBlock::Space
-                        | LineBlock::SectionDenoter(_)
-                        | LineBlock::Data(_)
-                        | LineBlock::DataModifier(_),
-                    ) => {}
-                }
-            }
-        }
+        CompileState::Free => {}
+        _ => lines.push(CodeLine::default()),
     }
 }
 
 pub fn format(contents: String) -> Result<String, Error> {
     let raw_lines: Vec<&str> = contents.lines().map(|l| l.trim()).collect();
-    let mut blocks = split_into_line_blocks(&raw_lines);
+    let sections = parse_sections(&raw_lines);
+    let mut output_lines: Vec<CodeLine> = Vec::new();
 
-    blocks.iter_mut().for_each(format_line_block);
-    indent_blocks(&mut blocks);
+    for section in sections {
+        // === Formatting ===
+        let mut lines = section.lines;
+        lines.iter_mut().for_each(|l| l.format());
+        let mut chunks = parse_chunks(lines, &section.dir);
+        chunks.iter_mut().for_each(|c| align_comments(c));
 
-    let lines = consume_line_blocks(blocks);
+        match &section.dir {
+            Directive::Text => indent_chunks(&mut chunks),
+            Directive::Data => {}
+        }
 
-    Ok(lines
+        // === Compilation ===
+        compile_section(&mut output_lines, section.dir_line, chunks);
+    }
+
+    Ok(output_lines
         .into_iter()
         .map(|l| l.to_string())
         .collect::<Vec<String>>()
