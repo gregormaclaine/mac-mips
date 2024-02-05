@@ -3,7 +3,7 @@
 A simple CLT that formats source files of MIPS assembly code.
 
 - Removes redundant whitespace
-- Positions commas correctly
+- Positions special characters correctly
 - Aligns comments
 - Correctly indents lines after procedures
 
