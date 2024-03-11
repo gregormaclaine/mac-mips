@@ -1,6 +1,7 @@
 <div align="center">
   
   ![Tests](https://github.com/gregormaclaine/mac-mips/actions/workflows/tests.yml/badge.svg)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
 
