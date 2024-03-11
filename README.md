@@ -1,3 +1,9 @@
+<div align="center">
+  
+  ![Tests](https://github.com/gregormaclaine/mac-mips/actions/workflows/tests.yml/badge.svg)
+
+</div>
+
 # `mac-mips`: A file formatter for MIPS source files
 
 A simple CLT that formats source files of MIPS assembly code.
